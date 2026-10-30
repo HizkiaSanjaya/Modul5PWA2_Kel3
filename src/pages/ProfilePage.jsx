@@ -20,7 +20,7 @@ const getActiveDraftCount = () => {
     let count = 0
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (key && (key.startsWith('bore_barrel_draft_') || key.startsWith('recipe_draft_'))) {
+      if (key && key.startsWith('gun_draft_') && !key.endsWith('_ts')) {
         count++
       }
     }
