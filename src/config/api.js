@@ -2,22 +2,22 @@ import axios from 'axios'
 
 // ---------------------------------------------------------------------------
 // Base URL & Supabase Key Configuration
-// Read from environment variables (.env)
+// Prioritas baca dari environment variables (.env / Vercel). Bila tidak ada,
+// pakai fallback default supaya aplikasi tetap berfungsi (misalnya saat
+// deploy belum dikonfigurasi env-nya). Nilai Supabase di bawah adalah URL
+// publik dan publishable key (bukan secret), jadi aman disematkan.
 // ---------------------------------------------------------------------------
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const FALLBACK_BASE_URL = 'https://sxunubxupdxyupnebuid.supabase.co'
+const FALLBACK_SUPABASE_KEY = 'sb_publishable_TXg9-r3ZVI8YZMzE90nwsQ_PU9GAmzg'
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || FALLBACK_BASE_URL
 const SUPABASE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  ''
+  FALLBACK_SUPABASE_KEY
 
 const IS_SUPABASE =
   BASE_URL.includes('supabase.co') || Boolean(SUPABASE_KEY)
-
-if (!BASE_URL) {
-  console.warn(
-    '[api] VITE_API_BASE_URL is not set. API requests will use relative paths.',
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Axios instance
