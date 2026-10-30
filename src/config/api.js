@@ -54,15 +54,34 @@ apiClient.interceptors.response.use(
   (error) => {
     let message = 'An unexpected error occurred'
     let status = null
+    let code = null
 
     if (error.response) {
       status = error.response.status
-      message =
-        error.response.data?.message ||
-        error.response.data?.msg ||
-        error.response.data?.error ||
-        error.response.data?.error_description ||
-        `Server error (${status})`
+      const data = error.response.data
+
+      // Normalise berbagai bentuk body error menjadi string tunggal.
+      // Backend bisa mengembalikan string, objek datar, atau objek bersarang
+      // seperti {"error": {"code": ..., "message": ...}} (format Vercel).
+      const candidates = []
+
+      if (typeof data === 'string') {
+        candidates.push(data)
+      } else if (data && typeof data === 'object') {
+        candidates.push(data.message, data.msg, data.error_description)
+
+        if (data.code) code = data.code
+
+        if (data.error && typeof data.error === 'object') {
+          candidates.push(data.error.message, data.error.msg)
+          if (data.error.code) code = data.error.code
+        } else if (typeof data.error === 'string') {
+          candidates.push(data.error)
+        }
+      }
+
+      const found = candidates.find((c) => typeof c === 'string' && c.trim())
+      message = found || `Server error (${status})`
     } else if (error.request) {
       message =
         'Unable to reach the server. Check your connection and try again.'
@@ -73,7 +92,7 @@ apiClient.interceptors.response.use(
     return Promise.reject({
       message,
       status,
-      code: error.response?.data?.code,
+      code,
       raw: error.response?.data,
     })
   },
