@@ -1,16 +1,16 @@
-import { Plus } from 'lucide-react'
+import { Plus, ShoppingCart } from 'lucide-react'
 import { useFavorites } from '../hooks/useFavorites'
+import { useCart } from '../context/CartContext'
 
 const NAV_ITEMS = [
   { id: 'Catalog', label: 'Catalog' },
   { id: 'Favorites', label: 'Favorites', hasBadge: true },
   { id: 'Profile', label: 'Profile' },
-  { id: 'About', label: 'About' },
-  { id: 'Contact', label: 'Contact' },
 ]
 
-function Header({ tab, onTab, onNavigateCreate }) {
+function Header({ tab, onTab, onNavigateCreate, onOpenCart }) {
   const { favorites } = useFavorites()
+  const { count: cartCount } = useCart()
   const favCount = favorites ? favorites.length : 0
 
   return (
@@ -38,16 +38,29 @@ function Header({ tab, onTab, onNavigateCreate }) {
         ))}
       </nav>
 
-      {onNavigateCreate && (
-        <button
-          type="button"
-          className="btn btn--primary btn--sm header-cta"
-          onClick={onNavigateCreate}
-          title="Register new hardware"
-        >
-          <Plus size={15} /> Add Hardware
-        </button>
-      )}
+      <div className="header-actions">
+        {onOpenCart && (
+          <button
+            type="button"
+            className="btn btn--outline btn--sm header-cta"
+            onClick={onOpenCart}
+            title="Keranjang"
+          >
+            <ShoppingCart size={15} /> Keranjang
+            {cartCount > 0 && <span className="nav-badge">{cartCount}</span>}
+          </button>
+        )}
+        {onNavigateCreate && (
+          <button
+            type="button"
+            className="btn btn--primary btn--sm header-cta"
+            onClick={onNavigateCreate}
+            title="Register new hardware"
+          >
+            <Plus size={15} /> Add Hardware
+          </button>
+        )}
+      </div>
     </header>
   )
 }

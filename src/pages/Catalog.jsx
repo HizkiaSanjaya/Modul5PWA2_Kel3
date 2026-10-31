@@ -1,12 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { RefreshCw, Plus, Loader, AlertCircle, PackageOpen } from 'lucide-react'
 import { useGuns } from '../hooks/useGuns'
 import GUNS_LOCAL from '../data/guns'
 import GunCard from '../components/gun/GunCard'
 import GunDetail from '../components/gun/GunDetail'
 import AdvancedFilter from '../components/common/AdvancedFilter'
-import ConfirmModal from '../components/modals/ConfirmModal'
-import gunService from '../services/gunService'
+import { isArchived } from '../utils/archiveStorage'
 import {
   matchesSearch,
   matchesCategory,
@@ -21,21 +20,31 @@ import {
  *   1. Live API via useGuns()
  *   2. Local static array (GUNS_LOCAL) when the API is unreachable
  *
- * Features: search, category filter, sort, CRUD actions, detail modal.
+ * Features: search, category filter, sort, CRUD actions, detail modal,
+ * arsip (soft delete) — item yang diarsipkan disembunyikan dari katalog.
  */
-export default function Catalog({ onNavigate }) {
+export default function Catalog({ onNavigate, onArchive }) {
   // ---- API data ----
   const { guns: apiGuns, loading, error, refetch } = useGuns({ limit: 50 })
   const [useLocal, setUseLocal] = useState(false)
 
-  // Decide data source
+  // Refresh filter arsip setiap kali terjadi perubahan arsip (arsip/pulihkan/hapus).
+  const [archiveTick, setArchiveTick] = useState(0)
+  useEffect(() => {
+    const handler = () => setArchiveTick((t) => t + 1)
+    window.addEventListener('bore-barrel:archive-changed', handler)
+    return () => window.removeEventListener('bore-barrel:archive-changed', handler)
+  }, [])
+
+  // Decide data source, lalu buang item yang diarsipkan
   const rawGuns = useMemo(() => {
-    if (useLocal || (error && apiGuns.length === 0)) {
-      // Enrich local data with synthetic ids so FavoriteButton and detail work
-      return GUNS_LOCAL.map((g, i) => ({ ...g, id: g.id || `local-${i}` }))
-    }
-    return apiGuns
-  }, [apiGuns, error, useLocal])
+    const source = useLocal || (error && apiGuns.length === 0)
+      ? GUNS_LOCAL.map((g, i) => ({ ...g, id: g.id || `local-${i}` }))
+      : apiGuns
+    return source.filter((g) => !isArchived(g.id ?? g.name))
+    // archiveTick dipakai agar memo ikut ter-hitung ulang saat arsip berubah
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiGuns, error, useLocal, archiveTick])
 
   // ---- filters / sort ----
   const [search, setSearch] = useState('')
@@ -55,26 +64,6 @@ export default function Catalog({ onNavigate }) {
   // ---- detail view ----
   const [selectedGun, setSelectedGun] = useState(null)
 
-  // ---- delete ----
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState('')
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return
-    try {
-      setDeleting(true)
-      setDeleteError('')
-      await gunService.deleteGun(deleteTarget.id)
-      setDeleteTarget(null)
-      refetch()
-    } catch (err) {
-      setDeleteError(err.message || 'Failed to delete.')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   // ---- If viewing a single product detail ----
   if (selectedGun) {
     return (
@@ -82,7 +71,7 @@ export default function Catalog({ onNavigate }) {
         gun={selectedGun}
         onBack={() => setSelectedGun(null)}
         onEdit={(g) => onNavigate && onNavigate('Edit', g)}
-        onDelete={(g) => { setSelectedGun(null); setDeleteTarget(g) }}
+        onArchive={(g) => { setSelectedGun(null); if (onArchive) onArchive(g) }}
       />
     )
   }
@@ -172,7 +161,7 @@ export default function Catalog({ onNavigate }) {
                 gun={gun}
                 onSelect={setSelectedGun}
                 onEdit={onNavigate ? (g) => onNavigate('Edit', g) : undefined}
-                onDelete={setDeleteTarget}
+                onArchive={onArchive}
               />
             ))}
           </ul>
@@ -191,21 +180,6 @@ export default function Catalog({ onNavigate }) {
           </p>
         )}
       </section>
-
-      {/* Delete confirmation */}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="Delete Product"
-        message={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        danger
-        loading={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => { setDeleteTarget(null); setDeleteError('') }}
-      />
-      {deleteError && (
-        <div className="toast toast--error">{deleteError}</div>
-      )}
     </>
   )
 }

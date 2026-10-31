@@ -1,4 +1,7 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
+import { cacheGet, cacheSet, cacheInvalidate } from '../utils/queryCache'
+
+const CACHE_PREFIX = 'reviews:'
 
 // ---------------------------------------------------------------------------
 // ReviewService — product reviews & ratings.
@@ -10,6 +13,10 @@ class ReviewService {
    * Fetch all reviews for a given product.
    */
   async getReviews(gunId) {
+    const cacheKey = CACHE_PREFIX + gunId
+    const cached = cacheGet(cacheKey)
+    if (cached) return cached
+
     if (IS_SUPABASE) {
       const data = await apiClient.get(
         `/rest/v1/reviews?product_id=eq.${gunId}&select=*&order=created_at.desc`,
@@ -18,6 +25,7 @@ class ReviewService {
         ? data.map((r) => ({
             id: r.id,
             product_id: r.product_id,
+            user_id: r.user_id,
             user_identifier: r.user_id ? `Operator ${String(r.user_id).substring(0, 8)}` : 'Anonymous',
             rating: r.rating,
             comment: r.comment || '',
@@ -25,10 +33,14 @@ class ReviewService {
           }))
         : []
 
-      return { success: true, data: list }
+      const result = { success: true, data: list }
+      cacheSet(cacheKey, result)
+      return result
     }
 
-    return apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
+    const result = await apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
+    cacheSet(cacheKey, result)
+    return result
   }
 
   /**
@@ -49,9 +61,11 @@ class ReviewService {
         headers: { Prefer: 'return=representation' },
       })
       const created = Array.isArray(res) ? res[0] : res
+      cacheInvalidate(CACHE_PREFIX)
       return { success: true, data: created }
     }
 
+    cacheInvalidate(CACHE_PREFIX)
     return apiClient.post(`/api/v1/recipes/${gunId}/reviews`, reviewData)
   }
 
@@ -68,9 +82,11 @@ class ReviewService {
         },
         { headers: { Prefer: 'return=representation' } },
       )
+      cacheInvalidate(CACHE_PREFIX)
       return { success: true, data: Array.isArray(res) ? res[0] : res }
     }
 
+    cacheInvalidate(CACHE_PREFIX)
     return apiClient.put(`/api/v1/reviews/${reviewId}`, reviewData)
   }
 
@@ -80,9 +96,11 @@ class ReviewService {
   async deleteReview(reviewId) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/reviews?id=eq.${reviewId}`)
+      cacheInvalidate(CACHE_PREFIX)
       return { success: true }
     }
 
+    cacheInvalidate(CACHE_PREFIX)
     return apiClient.delete(`/api/v1/reviews/${reviewId}`)
   }
 }

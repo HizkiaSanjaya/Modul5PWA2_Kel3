@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { ArrowLeft, Star, Send, Loader } from 'lucide-react'
+import { ArrowLeft, Star, Send, Loader, Archive } from 'lucide-react'
 import FavoriteButton from '../common/FavoriteButton'
-import { useReviews, useCreateReview } from '../../hooks/useReviews'
+import ShareButton from '../common/ShareButton'
+import AddToCartButton from '../common/AddToCartButton'
+import ReviewItem from '../review/ReviewItem'
+import { useReviews, useCreateReview, useUpdateReview, useDeleteReview } from '../../hooks/useReviews'
 import { getUserIdentifier } from '../../services/userService'
 import { formatPrice, averageRating } from '../../utils/helpers'
 
@@ -12,9 +15,9 @@ import { formatPrice, averageRating } from '../../utils/helpers'
  * @param {Object}   props.gun       — product data
  * @param {Function} props.onBack    — return to catalog
  * @param {Function} [props.onEdit]  — navigate to edit page
- * @param {Function} [props.onDelete]— trigger delete flow
+ * @param {Function} [props.onArchive] — trigger soft delete (arsip) flow
  */
-export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
+export default function GunDetail({ gun, onBack, onEdit, onArchive }) {
   const imgSrc = gun.image_url || gun.image || '/guns/pistol.svg'
   const category = gun.type || gun.category || '—'
   const caliber = gun.caliber || gun.difficulty || ''
@@ -23,10 +26,14 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
   // Reviews
   const { reviews, loading: reviewsLoading, refetch: refetchReviews } = useReviews(gun.id)
   const { createReview, loading: submitting } = useCreateReview()
+  const { updateReview } = useUpdateReview()
+  const { deleteReview } = useDeleteReview()
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
   const [reviewError, setReviewError] = useState('')
   const [reviewSuccess, setReviewSuccess] = useState('')
+
+  const currentUserId = getUserIdentifier()
 
   const avgRating = gun.average_rating || averageRating(reviews)
   const reviewCount = gun.review_count ?? reviews.length
@@ -42,7 +49,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
     }
 
     const result = await createReview(gun.id, {
-      user_identifier: getUserIdentifier(),
+      user_identifier: currentUserId,
       rating,
       comment: comment.trim(),
     })
@@ -57,6 +64,18 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
     }
   }
 
+  const handleEditReview = async (reviewId, data) => {
+    const ok = await updateReview(reviewId, data)
+    if (ok) refetchReviews()
+    return ok
+  }
+
+  const handleDeleteReview = async (reviewId) => {
+    const ok = await deleteReview(reviewId)
+    if (ok) refetchReviews()
+    return ok
+  }
+
   return (
     <div className="detail">
       {/* Back button */}
@@ -66,7 +85,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
 
       {/* Hero */}
       <div className="detail-hero">
-        <img className="detail-img" src={imgSrc} alt={gun.name} />
+        <img className="detail-img" src={imgSrc} alt={gun.name} loading="lazy" />
         <div className="detail-info">
           <h1 className="display">{gun.name}</h1>
           <p className="type">
@@ -84,14 +103,16 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
 
           <div className="detail-actions">
             <FavoriteButton gunId={gun.id || gun.name} />
+            <AddToCartButton gun={gun} label="Tambah ke Keranjang" />
+            <ShareButton gunId={gun.id || gun.name} />
             {onEdit && (
               <button type="button" className="btn btn--outline" onClick={() => onEdit(gun)}>
                 Edit
               </button>
             )}
-            {onDelete && (
-              <button type="button" className="btn btn--danger" onClick={() => onDelete(gun)}>
-                Delete
+            {onArchive && (
+              <button type="button" className="btn btn--outline" onClick={() => onArchive(gun)}>
+                <Archive size={16} /> Arsipkan
               </button>
             )}
           </div>
@@ -123,9 +144,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
           <h2>Assembly / Maintenance Steps</h2>
           <ol className="detail-steps">
             {gun.steps.map((step, i) => (
-              <li key={step.id || i}>
-                {step.instruction || step}
-              </li>
+              <li key={step.id || i}>{step.instruction || step}</li>
             ))}
           </ol>
         </section>
@@ -191,22 +210,13 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
         ) : reviews.length > 0 ? (
           <ul className="review-list">
             {reviews.map((rev) => (
-              <li key={rev.id} className="review-item">
-                <div className="review-head">
-                  <span className="review-user">{rev.user_identifier || 'Anonymous'}</span>
-                  <span className="review-stars-display">
-                    {Array.from({ length: 5 }, (_, i) => (
-                      <Star
-                        key={i}
-                        size={14}
-                        fill={i < rev.rating ? 'var(--brass)' : 'none'}
-                        stroke={i < rev.rating ? 'var(--brass)' : 'var(--line)'}
-                      />
-                    ))}
-                  </span>
-                </div>
-                {rev.comment && <p className="review-comment">{rev.comment}</p>}
-              </li>
+              <ReviewItem
+                key={rev.id}
+                review={rev}
+                isOwn={rev.user_id === currentUserId}
+                onEdit={handleEditReview}
+                onDelete={handleDeleteReview}
+              />
             ))}
           </ul>
         ) : (

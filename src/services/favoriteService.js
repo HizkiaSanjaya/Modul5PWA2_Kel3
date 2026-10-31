@@ -1,5 +1,8 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
 import { normalizeProduct } from './gunService'
+import { cacheGet, cacheSet, cacheInvalidate } from '../utils/queryCache'
+
+const CACHE_PREFIX = 'favorites:'
 
 // ---------------------------------------------------------------------------
 // FavoriteService — server-side favourites.
@@ -15,6 +18,10 @@ class FavoriteService {
    * Retrieve all favourited products for the given user.
    */
   async getFavorites(userIdentifier) {
+    const cacheKey = CACHE_PREFIX + userIdentifier
+    const cached = cacheGet(cacheKey)
+    if (cached) return cached
+
     if (IS_SUPABASE) {
       const data = await apiClient.get(
         `/rest/v1/favorites?user_id=eq.${userIdentifier}&select=product_id,created_at,products(*)`,
@@ -32,12 +39,16 @@ class FavoriteService {
           })
         : []
 
-      return { success: true, data: list }
+      const result = { success: true, data: list }
+      cacheSet(cacheKey, result)
+      return result
     }
 
-    return apiClient.get('/api/v1/favorites', {
+    const result = await apiClient.get('/api/v1/favorites', {
       params: { user_identifier: userIdentifier },
     })
+    cacheSet(cacheKey, result)
+    return result
   }
 
   /**
@@ -59,6 +70,7 @@ class FavoriteService {
         await apiClient.delete(
           `/rest/v1/favorites?product_id=eq.${targetId}&user_id=eq.${userId}`,
         )
+        cacheInvalidate(CACHE_PREFIX)
         return { success: true, data: { is_favorited: false } }
       } else {
         // Add to favorites
@@ -67,10 +79,12 @@ class FavoriteService {
           { product_id: targetId, user_id: userId },
           { headers: { Prefer: 'return=minimal' } },
         )
+        cacheInvalidate(CACHE_PREFIX)
         return { success: true, data: { is_favorited: true } }
       }
     }
 
+    cacheInvalidate(CACHE_PREFIX)
     return apiClient.post('/api/v1/favorites/toggle', data)
   }
 }

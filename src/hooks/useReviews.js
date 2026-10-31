@@ -75,3 +75,57 @@ export function useCreateReview() {
 
   return { createReview, loading, error, success }
 }
+
+// ---------------------------------------------------------------------------
+// useUpdateReview — mengubah review yang sudah ada.
+// ---------------------------------------------------------------------------
+
+export function useUpdateReview() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const updateReview = async (reviewId, reviewData) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await reviewService.updateReview(reviewId, reviewData)
+      if (response.success) return true
+      setError(response.message || 'Gagal memperbarui review.')
+      return false
+    } catch (err) {
+      setError(err.message || 'Terjadi kesalahan saat memperbarui review.')
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { updateReview, loading, error }
+}
+
+// ---------------------------------------------------------------------------
+// useDeleteReview — menghapus review.
+// ---------------------------------------------------------------------------
+
+export function useDeleteReview() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const deleteReview = async (reviewId) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await reviewService.deleteReview(reviewId)
+      if (response.success) return true
+      setError(response.message || 'Gagal menghapus review.')
+      return false
+    } catch (err) {
+      setError(err.message || 'Terjadi kesalahan saat menghapus review.')
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { deleteReview, loading, error }
+}

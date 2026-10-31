@@ -1,4 +1,8 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
+import { cacheGet, cacheSet, cacheInvalidate } from '../utils/queryCache'
+
+const CACHE_LIST = 'guns:list:'
+const CACHE_BYID = 'guns:byId:'
 
 // ---------------------------------------------------------------------------
 // Normalizer — standardizes product shape whether received from Supabase
@@ -64,6 +68,10 @@ class GunService {
    * Fetch a paginated, filterable list of products.
    */
   async getGuns(params = {}) {
+    const cacheKey = CACHE_LIST + JSON.stringify(params)
+    const cached = cacheGet(cacheKey)
+    if (cached) return cached
+
     if (IS_SUPABASE) {
       const queryParts = ['select=*']
 
@@ -90,7 +98,7 @@ class GunService {
       const data = await apiClient.get(`/rest/v1/products?${queryString}`)
       const list = Array.isArray(data) ? data.map(normalizeProduct) : []
 
-      return {
+      const result = {
         success: true,
         data: list,
         pagination: {
@@ -99,27 +107,39 @@ class GunService {
           limit: params.limit || 50,
         },
       }
+      cacheSet(cacheKey, result)
+      return result
     }
 
     // Fallback: university REST API
     const clean = Object.fromEntries(
       Object.entries(params).filter(([, v]) => v !== '' && v != null),
     )
-    return apiClient.get('/api/v1/recipes', { params: clean })
+    const result = await apiClient.get('/api/v1/recipes', { params: clean })
+    cacheSet(cacheKey, result)
+    return result
   }
 
   /**
    * Fetch a single product by ID.
    */
   async getGunById(id) {
+    const cacheKey = CACHE_BYID + id
+    const cached = cacheGet(cacheKey)
+    if (cached) return cached
+
     if (IS_SUPABASE) {
       const data = await apiClient.get(`/rest/v1/products?id=eq.${id}&select=*`)
       if (Array.isArray(data) && data.length > 0) {
-        return { success: true, data: normalizeProduct(data[0]) }
+        const result = { success: true, data: normalizeProduct(data[0]) }
+        cacheSet(cacheKey, result)
+        return result
       }
       throw new Error('Hardware item not found.')
     }
-    return apiClient.get(`/api/v1/recipes/${id}`)
+    const result = await apiClient.get(`/api/v1/recipes/${id}`)
+    cacheSet(cacheKey, result)
+    return result
   }
 
   /**
@@ -147,8 +167,10 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const created = Array.isArray(res) ? res[0] : res
+      cacheInvalidate('guns:')
       return { success: true, data: normalizeProduct(created) }
     }
+    cacheInvalidate('guns:')
     return apiClient.post('/api/v1/recipes', data)
   }
 
@@ -180,8 +202,10 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const updated = Array.isArray(res) ? res[0] : res
+      cacheInvalidate('guns:')
       return { success: true, data: normalizeProduct(updated) }
     }
+    cacheInvalidate('guns:')
     return apiClient.put(`/api/v1/recipes/${id}`, data)
   }
 
@@ -201,8 +225,10 @@ class GunService {
   async deleteGun(id) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/products?id=eq.${id}`)
+      cacheInvalidate('guns:')
       return { success: true }
     }
+    cacheInvalidate('guns:')
     return apiClient.delete(`/api/v1/recipes/${id}`)
   }
 }
