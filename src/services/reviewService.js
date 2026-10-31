@@ -1,5 +1,5 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
-import { cacheGet, cacheSet, cacheInvalidate } from '../utils/queryCache'
+import { cachedFetch, cacheInvalidate } from '../utils/queryCache'
 
 const CACHE_PREFIX = 'reviews:'
 
@@ -14,33 +14,29 @@ class ReviewService {
    */
   async getReviews(gunId) {
     const cacheKey = CACHE_PREFIX + gunId
-    const cached = cacheGet(cacheKey)
-    if (cached) return cached
 
-    if (IS_SUPABASE) {
-      const data = await apiClient.get(
-        `/rest/v1/reviews?product_id=eq.${gunId}&select=*&order=created_at.desc`,
-      )
-      const list = Array.isArray(data)
-        ? data.map((r) => ({
-            id: r.id,
-            product_id: r.product_id,
-            user_id: r.user_id,
-            user_identifier: r.user_id ? `Operator ${String(r.user_id).substring(0, 8)}` : 'Anonymous',
-            rating: r.rating,
-            comment: r.comment || '',
-            created_at: r.created_at,
-          }))
-        : []
+    return cachedFetch(cacheKey, async () => {
+      if (IS_SUPABASE) {
+        const data = await apiClient.get(
+          `/rest/v1/reviews?product_id=eq.${gunId}&select=*&order=created_at.desc`,
+        )
+        const list = Array.isArray(data)
+          ? data.map((r) => ({
+              id: r.id,
+              product_id: r.product_id,
+              user_id: r.user_id,
+              user_identifier: r.user_id ? `Operator ${String(r.user_id).substring(0, 8)}` : 'Anonymous',
+              rating: r.rating,
+              comment: r.comment || '',
+              created_at: r.created_at,
+            }))
+          : []
 
-      const result = { success: true, data: list }
-      cacheSet(cacheKey, result)
-      return result
-    }
+        return { success: true, data: list }
+      }
 
-    const result = await apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
-    cacheSet(cacheKey, result)
-    return result
+      return apiClient.get(`/api/v1/recipes/${gunId}/reviews`)
+    })
   }
 
   /**

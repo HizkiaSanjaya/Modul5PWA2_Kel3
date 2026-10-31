@@ -1,5 +1,5 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
-import { cacheGet, cacheSet, cacheInvalidate } from '../utils/queryCache'
+import { cachedFetch, cacheInvalidate } from '../utils/queryCache'
 
 const CACHE_LIST = 'guns:list:'
 const CACHE_BYID = 'guns:byId:'
@@ -69,55 +69,51 @@ class GunService {
    */
   async getGuns(params = {}) {
     const cacheKey = CACHE_LIST + JSON.stringify(params)
-    const cached = cacheGet(cacheKey)
-    if (cached) return cached
 
-    if (IS_SUPABASE) {
-      const queryParts = ['select=*']
+    return cachedFetch(cacheKey, async () => {
+      if (IS_SUPABASE) {
+        const queryParts = ['select=*']
 
-      if (params.search) {
-        queryParts.push(`name=ilike.*${encodeURIComponent(params.search)}*`)
+        if (params.search) {
+          queryParts.push(`name=ilike.*${encodeURIComponent(params.search)}*`)
+        }
+
+        if (params.category && params.category !== 'All') {
+          queryParts.push(`type=eq.${encodeURIComponent(params.category)}`)
+        }
+
+        if (params.sort_by) {
+          const order = params.order === 'desc' ? 'desc' : 'asc'
+          queryParts.push(`order=${encodeURIComponent(params.sort_by)}.${order}`)
+        } else {
+          queryParts.push('order=created_at.desc')
+        }
+
+        if (params.limit) {
+          queryParts.push(`limit=${params.limit}`)
+        }
+
+        const queryString = queryParts.join('&')
+        const data = await apiClient.get(`/rest/v1/products?${queryString}`)
+        const list = Array.isArray(data) ? data.map(normalizeProduct) : []
+
+        return {
+          success: true,
+          data: list,
+          pagination: {
+            total: list.length,
+            page: params.page || 1,
+            limit: params.limit || 50,
+          },
+        }
       }
 
-      if (params.category && params.category !== 'All') {
-        queryParts.push(`type=eq.${encodeURIComponent(params.category)}`)
-      }
-
-      if (params.sort_by) {
-        const order = params.order === 'desc' ? 'desc' : 'asc'
-        queryParts.push(`order=${encodeURIComponent(params.sort_by)}.${order}`)
-      } else {
-        queryParts.push('order=created_at.desc')
-      }
-
-      if (params.limit) {
-        queryParts.push(`limit=${params.limit}`)
-      }
-
-      const queryString = queryParts.join('&')
-      const data = await apiClient.get(`/rest/v1/products?${queryString}`)
-      const list = Array.isArray(data) ? data.map(normalizeProduct) : []
-
-      const result = {
-        success: true,
-        data: list,
-        pagination: {
-          total: list.length,
-          page: params.page || 1,
-          limit: params.limit || 50,
-        },
-      }
-      cacheSet(cacheKey, result)
-      return result
-    }
-
-    // Fallback: university REST API
-    const clean = Object.fromEntries(
-      Object.entries(params).filter(([, v]) => v !== '' && v != null),
-    )
-    const result = await apiClient.get('/api/v1/recipes', { params: clean })
-    cacheSet(cacheKey, result)
-    return result
+      // Fallback: university REST API
+      const clean = Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== '' && v != null),
+      )
+      return apiClient.get('/api/v1/recipes', { params: clean })
+    })
   }
 
   /**
@@ -125,21 +121,17 @@ class GunService {
    */
   async getGunById(id) {
     const cacheKey = CACHE_BYID + id
-    const cached = cacheGet(cacheKey)
-    if (cached) return cached
 
-    if (IS_SUPABASE) {
-      const data = await apiClient.get(`/rest/v1/products?id=eq.${id}&select=*`)
-      if (Array.isArray(data) && data.length > 0) {
-        const result = { success: true, data: normalizeProduct(data[0]) }
-        cacheSet(cacheKey, result)
-        return result
+    return cachedFetch(cacheKey, async () => {
+      if (IS_SUPABASE) {
+        const data = await apiClient.get(`/rest/v1/products?id=eq.${id}&select=*`)
+        if (Array.isArray(data) && data.length > 0) {
+          return { success: true, data: normalizeProduct(data[0]) }
+        }
+        throw new Error('Hardware item not found.')
       }
-      throw new Error('Hardware item not found.')
-    }
-    const result = await apiClient.get(`/api/v1/recipes/${id}`)
-    cacheSet(cacheKey, result)
-    return result
+      return apiClient.get(`/api/v1/recipes/${id}`)
+    })
   }
 
   /**
