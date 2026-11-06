@@ -8,13 +8,40 @@ const CACHE_BYID = 'guns:byId:'
 // Normalizer — standardizes product shape whether received from Supabase
 // (public.products) or from the university API (/api/v1/recipes).
 // ---------------------------------------------------------------------------
+// Format marker gambar galeri di kolom `specs`: "__image: <url>" (mengikuti
+// data seed instruktur). Didukung juga varian "__image__:".
+const IMG_MARKER = '__image: '
+
+const isImageSpec = (s) => {
+  if (typeof s !== 'string') return false
+  const idx = s.indexOf(':')
+  if (idx < 0) return false
+  const head = s.slice(0, idx).trim().toLowerCase()
+  return head === '__image' || head === '__image__'
+}
+
+const imageUrlFromSpec = (s) => s.slice(s.indexOf(':') + 1).trim()
+
 export const normalizeProduct = (item) => {
   if (!item) return null
 
-  // Resolve specifications from Supabase `specs` (text array) or API `ingredients`
+  // Resolve specifications from Supabase `specs` (text array) or API `ingredients`.
+  // Entri berformat `__image: <url>` adalah gambar galeri tambahan (multi-image),
+  // bukan spesifikasi. Entri itu dipisahkan ke array `images`.
+  const galleryFromSpecs = []
   let specsList = []
+
   if (Array.isArray(item.specs)) {
-    specsList = item.specs.map((s, idx) => {
+    const cleanSpecs = []
+    item.specs.forEach((s) => {
+      if (isImageSpec(s)) {
+        galleryFromSpecs.push(imageUrlFromSpec(s))
+      } else {
+        cleanSpecs.push(s)
+      }
+    })
+
+    specsList = cleanSpecs.map((s, idx) => {
       if (typeof s === 'string') {
         const colonIndex = s.indexOf(':')
         if (colonIndex > -1) {
@@ -42,6 +69,10 @@ export const normalizeProduct = (item) => {
       ? item.steps
       : ['Verify firearm is completely unloaded and point in safe direction.', 'Inspect receiver and mechanism for maintenance.']
 
+  const primaryImage = item.image_url || item.image || '/guns/pistol.svg'
+  // Gabungkan gambar utama + galeri (unik, urutan dipertahankan).
+  const images = [primaryImage, ...galleryFromSpecs.filter((u) => u && u !== primaryImage)]
+
   return {
     ...item,
     id: item.id,
@@ -51,8 +82,9 @@ export const normalizeProduct = (item) => {
     caliber: item.caliber || 'Standard',
     price: Number(item.price ?? item.cook_time ?? 0),
     description: item.description || '',
-    image_url: item.image_url || item.image || '/guns/pistol.svg',
-    image: item.image_url || item.image || '/guns/pistol.svg',
+    image_url: primaryImage,
+    image: primaryImage,
+    images,
     ingredients: specsList,
     steps: stepsList,
   }
@@ -139,11 +171,17 @@ class GunService {
    */
   async createGun(data) {
     if (IS_SUPABASE) {
-      const specsArray = Array.isArray(data.ingredients)
+      const baseSpecs = Array.isArray(data.ingredients)
         ? data.ingredients.map((i) => `${i.name}: ${i.quantity}`)
         : Array.isArray(data.specs)
         ? data.specs
         : []
+
+      // Gambar tambahan (multi-image) disimpan sebagai marker di kolom specs.
+      const gallery = Array.isArray(data.images) ? data.images : []
+      const primary = data.image_url || gallery[0] || null
+      const extraImages = gallery.filter((u) => u && u !== primary)
+      const specsArray = [...baseSpecs, ...extraImages.map((u) => `${IMG_MARKER}${u}`)]
 
       const payload = {
         name: data.name,
@@ -152,7 +190,7 @@ class GunService {
         price: Number(data.price ?? data.cook_time ?? 0),
         description: data.description || '',
         specs: specsArray,
-        image_url: data.image_url || null,
+        image_url: primary,
       }
 
       const res = await apiClient.post('/rest/v1/products', payload, {
@@ -171,11 +209,22 @@ class GunService {
    */
   async updateGun(id, data) {
     if (IS_SUPABASE) {
-      const specsArray = Array.isArray(data.ingredients)
+      const baseSpecs = Array.isArray(data.ingredients)
         ? data.ingredients.map((i) => `${i.name}: ${i.quantity}`)
         : Array.isArray(data.specs)
         ? data.specs
         : undefined
+
+      // Bila `images` dikirim, bangun ulang specs dengan marker galeri.
+      let specsArray = baseSpecs
+      if (Array.isArray(data.images)) {
+        const primary = data.image_url || data.images[0] || null
+        const extraImages = data.images.filter((u) => u && u !== primary)
+        specsArray = [
+          ...(baseSpecs || []),
+          ...extraImages.map((u) => `${IMG_MARKER}${u}`),
+        ]
+      }
 
       const payload = {
         updated_at: new Date().toISOString(),

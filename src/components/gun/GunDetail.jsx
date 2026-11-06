@@ -24,9 +24,13 @@ export default function GunDetail({ gun, onBack, onEdit, onArchive }) {
   const caliber = gun.caliber || gun.difficulty || ''
   const price = gun.price ?? gun.cook_time ?? 0
 
-  // Galeri: gambar utama + gambar tambahan dari localStorage (multi-image).
-  const gallery = gun.id != null ? getGallery(gun.id) : []
-  const images = [imgSrc, ...gallery.filter((u) => u && u !== imgSrc)]
+  // Galeri: gambar utama + gambar tambahan dari server (marker specs) dan
+  // localStorage (fallback untuk produk lokal).
+  const serverGallery = Array.isArray(gun.images) ? gun.images : []
+  const localGallery = gun.id != null ? getGallery(gun.id) : []
+  const images = Array.from(
+    new Set([imgSrc, ...serverGallery, ...localGallery].filter(Boolean)),
+  )
   const [activeImg, setActiveImg] = useState(imgSrc)
 
   // Reset gambar aktif ketika produk yang ditampilkan berganti.

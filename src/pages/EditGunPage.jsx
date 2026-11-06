@@ -96,6 +96,14 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
           })
           setCurrentImageUrl(data.image_url || data.image || '/guns/pistol.svg')
 
+          // Muat galeri dari server (marker specs) + fallback localStorage.
+          const primary = data.image_url || data.image
+          const serverGallery = Array.isArray(data.images)
+            ? data.images.filter((u) => u && u !== primary)
+            : []
+          const localGallery = getGallery(targetId)
+          setGalleryState(Array.from(new Set([...serverGallery, ...localGallery])))
+
           if (data.ingredients && data.ingredients.length > 0) {
             setSpecs(data.ingredients.map((ing) => ({
               name: ing.name || '',
@@ -321,6 +329,7 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
       category: formData.category || 'makanan',
       description: formData.description.trim() || `${formData.type} caliber ${formData.caliber}.`,
       image_url: imagePreview || currentImageUrl || '/guns/pistol.svg',
+      images: [imagePreview || currentImageUrl || '/guns/pistol.svg', ...gallery],
       prep_time: 15,
       cook_time: Number(formData.price) || 500,
       servings: Number(formData.servings) || 1,

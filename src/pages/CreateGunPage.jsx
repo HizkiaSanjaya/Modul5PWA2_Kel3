@@ -312,6 +312,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       category: formData.category || 'makanan',
       description: formData.description.trim() || `${formData.type} caliber ${formData.caliber}.`,
       image_url: uploadedImageUrl || '/guns/pistol.svg',
+      images: [uploadedImageUrl || '/guns/pistol.svg', ...gallery],
       prep_time: 15,
       cook_time: Number(formData.price) || 500, // Price stored in cook_time
       servings: Number(formData.servings) || 1,
