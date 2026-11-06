@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ArrowLeft, Star, Send, Loader, Archive } from 'lucide-react'
 import FavoriteButton from '../common/FavoriteButton'
 import ShareButton from '../common/ShareButton'
@@ -6,6 +6,7 @@ import AddToCartButton from '../common/AddToCartButton'
 import ReviewItem from '../review/ReviewItem'
 import { useReviews, useCreateReview, useUpdateReview, useDeleteReview } from '../../hooks/useReviews'
 import { getUserIdentifier } from '../../services/userService'
+import { getGallery } from '../../utils/galleryStorage'
 import { formatPrice, averageRating } from '../../utils/helpers'
 
 /**
@@ -22,6 +23,15 @@ export default function GunDetail({ gun, onBack, onEdit, onArchive }) {
   const category = gun.type || gun.category || '—'
   const caliber = gun.caliber || gun.difficulty || ''
   const price = gun.price ?? gun.cook_time ?? 0
+
+  // Galeri: gambar utama + gambar tambahan dari localStorage (multi-image).
+  const gallery = gun.id != null ? getGallery(gun.id) : []
+  const images = [imgSrc, ...gallery.filter((u) => u && u !== imgSrc)]
+  const [activeImg, setActiveImg] = useState(imgSrc)
+
+  // Reset gambar aktif ketika produk yang ditampilkan berganti.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setActiveImg(imgSrc) }, [imgSrc])
 
   // Reviews
   const { reviews, loading: reviewsLoading, refetch: refetchReviews } = useReviews(gun.id)
@@ -85,7 +95,24 @@ export default function GunDetail({ gun, onBack, onEdit, onArchive }) {
 
       {/* Hero */}
       <div className="detail-hero">
-        <img className="detail-img" src={imgSrc} alt={gun.name} loading="lazy" />
+        <div className="detail-media">
+          <img className="detail-img" src={activeImg} alt={gun.name} loading="lazy" />
+          {images.length > 1 && (
+            <div className="detail-thumbs">
+              {images.map((url, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`detail-thumb${activeImg === url ? ' detail-thumb--active' : ''}`}
+                  onClick={() => setActiveImg(url)}
+                  aria-label={`Lihat gambar ${i + 1}`}
+                >
+                  <img src={url} alt={`${gun.name} ${i + 1}`} loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="detail-info">
           <h1 className="display">{gun.name}</h1>
           <p className="type">

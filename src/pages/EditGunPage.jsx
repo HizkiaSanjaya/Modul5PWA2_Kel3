@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import gunService from '../services/gunService'
 import uploadService from '../services/uploadService'
+import { compressImage } from '../utils/imageUtils'
+import { getGallery, setGallery } from '../utils/galleryStorage'
 import {
   saveDraft,
   loadDraft,
@@ -49,6 +51,10 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploading, setUploading] = useState(false)
+
+  // Gambar tambahan (multi-image) — disimpan di localStorage per id produk.
+  const [gallery, setGalleryState] = useState(() => getGallery(targetId))
+  const [galleryUploading, setGalleryUploading] = useState(false)
 
   // Specs & Steps
   const [specs, setSpecs] = useState([{ name: '', quantity: '' }])
@@ -203,6 +209,48 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
     } finally {
       setUploading(false)
     }
+  }
+
+  // Unggah banyak gambar tambahan (galeri) untuk produk yang sedang diedit.
+  const handleGalleryChange = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    setGalleryUploading(true)
+    setError('')
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const added = []
+
+    for (const file of files) {
+      if (!allowed.includes(file.type)) {
+        setError('Format gambar harus .jpg, .jpeg, .png, atau .webp.')
+        continue
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Ukuran tiap gambar maksimal 5MB.')
+        continue
+      }
+      try {
+        const dataUrl = await compressImage(file)
+        added.push(dataUrl)
+      } catch {
+        setError('Salah satu gambar gagal diproses.')
+      }
+    }
+
+    if (added.length > 0) {
+      const next = [...gallery, ...added]
+      setGalleryState(next)
+      setGallery(targetId, next)
+    }
+    setGalleryUploading(false)
+    e.target.value = ''
+  }
+
+  const handleRemoveGallery = (index) => {
+    const next = gallery.filter((_, i) => i !== index)
+    setGalleryState(next)
+    setGallery(targetId, next)
   }
 
   // Specs & Steps
@@ -386,6 +434,53 @@ export default function EditGunPage({ gun, gunId, onBack, onSuccess }) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Gallery — gambar tambahan (multi-image) */}
+        <div className="card-box">
+          <h2 className="card-box-title">Galeri Gambar Tambahan</h2>
+          <p className="card-box-desc">
+            Kelola lebih dari satu gambar untuk katalog ini. Gambar utama tetap
+            menjadi thumbnail katalog.
+          </p>
+
+          <input
+            id="edit-gallery-input"
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            multiple
+            onChange={handleGalleryChange}
+            className="hidden-file-input"
+          />
+          <label htmlFor="edit-gallery-input" className="btn btn--outline btn--sm">
+            {galleryUploading ? (
+              <>
+                <Loader size={14} className="spin" /> Memproses…
+              </>
+            ) : (
+              <>
+                <Upload size={14} /> Pilih Gambar (bisa lebih dari satu)
+              </>
+            )}
+          </label>
+
+          {gallery.length > 0 && (
+            <div className="gallery-grid">
+              {gallery.map((url, i) => (
+                <div className="gallery-thumb" key={i}>
+                  <img src={url} alt={`Gambar tambahan ${i + 1}`} loading="lazy" />
+                  <button
+                    type="button"
+                    className="gallery-remove"
+                    onClick={() => handleRemoveGallery(i)}
+                    aria-label={`Hapus gambar ${i + 1}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Core fields */}

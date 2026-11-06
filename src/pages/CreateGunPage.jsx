@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import gunService from '../services/gunService'
 import uploadService from '../services/uploadService'
+import { compressImage } from '../utils/imageUtils'
+import { setGallery } from '../utils/galleryStorage'
 import {
   saveDraft,
   loadDraft,
@@ -45,6 +47,10 @@ export default function CreateGunPage({ onBack, onSuccess }) {
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadedImageUrl, setUploadedImageUrl] = useState('')
 
+  // Gambar tambahan (multi-image per katalog)
+  const [gallery, setGalleryState] = useState([])
+  const [galleryUploading, setGalleryUploading] = useState(false)
+
   // Specifications (ingredients in API)
   const [specs, setSpecs] = useState([
     { name: 'Frame', quantity: 'Polymer' },
@@ -73,6 +79,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       specs,
       steps,
       uploadedImageUrl,
+      gallery,
     }
     const saved = saveDraft(draftData, 'create')
     if (saved) {
@@ -83,7 +90,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         setTimeout(() => setSuccessMsg(''), 3000)
       }
     }
-  }, [formData, specs, steps, uploadedImageUrl])
+  }, [formData, specs, steps, uploadedImageUrl, gallery])
 
   // Auto-save draft every 30 seconds while in form step
   useEffect(() => {
@@ -106,6 +113,9 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         setUploadedImageUrl(draft.uploadedImageUrl)
         setImagePreview(draft.uploadedImageUrl)
         setCurrentStep('form')
+      }
+      if (Array.isArray(draft.gallery)) {
+        setGalleryState(draft.gallery)
       }
       setShowDraftModal(false)
       setSuccessMsg('Draft successfully loaded.')
@@ -138,6 +148,46 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
     setError('')
+  }
+
+  // Unggah banyak gambar tambahan (galeri). Tiap file dikompres lalu disimpan
+  // sebagai Data URL di state; disimpan permanen ke localStorage setelah produk
+  // berhasil dibuat (id produk baru diketahui setelah respons server).
+  const handleGalleryChange = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    setGalleryUploading(true)
+    setError('')
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const added = []
+
+    for (const file of files) {
+      if (!allowed.includes(file.type)) {
+        setError('Format gambar harus .jpg, .jpeg, .png, atau .webp.')
+        continue
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Ukuran tiap gambar maksimal 5MB.')
+        continue
+      }
+      try {
+        const dataUrl = await compressImage(file)
+        added.push(dataUrl)
+      } catch {
+        setError('Salah satu gambar gagal diproses.')
+      }
+    }
+
+    if (added.length > 0) {
+      setGalleryState((prev) => [...prev, ...added])
+    }
+    setGalleryUploading(false)
+    e.target.value = ''
+  }
+
+  const handleRemoveGallery = (index) => {
+    setGalleryState((prev) => prev.filter((_, i) => i !== index))
   }
 
   // Quick fallback select vector from local assets
@@ -275,6 +325,11 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       setCreating(true)
       const response = await gunService.createGun(payload)
       if (response.success || response.data) {
+        // Simpan gambar tambahan ke galeri (localStorage) memakai id produk baru.
+        const newId = response?.data?.id
+        if (newId != null && gallery.length > 0) {
+          setGallery(newId, gallery)
+        }
         deleteDraft('create')
         if (onSuccess) {
           onSuccess(response.data)
@@ -461,6 +516,53 @@ export default function CreateGunPage({ onBack, onSuccess }) {
             >
               Change Image
             </button>
+          </div>
+
+          {/* Gallery — gambar tambahan (multi-image) */}
+          <div className="card-box">
+            <h2 className="card-box-title">Galeri Gambar Tambahan</h2>
+            <p className="card-box-desc">
+              Unggah lebih dari satu gambar untuk katalog ini. Gambar utama tetap
+              menjadi thumbnail katalog.
+            </p>
+
+            <input
+              id="gallery-image-input"
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              multiple
+              onChange={handleGalleryChange}
+              className="hidden-file-input"
+            />
+            <label htmlFor="gallery-image-input" className="btn btn--outline btn--sm">
+              {galleryUploading ? (
+                <>
+                  <Loader size={14} className="spin" /> Memproses…
+                </>
+              ) : (
+                <>
+                  <Upload size={14} /> Pilih Gambar (bisa lebih dari satu)
+                </>
+              )}
+            </label>
+
+            {gallery.length > 0 && (
+              <div className="gallery-grid">
+                {gallery.map((url, i) => (
+                  <div className="gallery-thumb" key={i}>
+                    <img src={url} alt={`Gambar tambahan ${i + 1}`} loading="lazy" />
+                    <button
+                      type="button"
+                      className="gallery-remove"
+                      onClick={() => handleRemoveGallery(i)}
+                      aria-label={`Hapus gambar ${i + 1}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Core Info */}
